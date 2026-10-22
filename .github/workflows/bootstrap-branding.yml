@@ -1,0 +1,46 @@
+name: Bootstrap FrostBridge logo assets
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/bootstrap-branding.yml"
+permissions:
+  contents: write
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rendering tools
+        run: python -m pip install --quiet cairosvg pillow
+      - name: Download approved vector traces and render transparent variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p branding
+          curl --fail --location --retry 3 --silent --show-error 'https://vectorize.stemonte.io/api/jobs/545c604aeadf4d6792a134b27972e430/logo.svg' -o branding/FrostBridge-stacked-traced.svg
+          curl --fail --location --retry 3 --silent --show-error 'https://vectorize.stemonte.io/api/jobs/1b6ba769113f40cc99b472507c563dc5/logo.svg' -o branding/FrostBridge-horizontal-traced.svg
+          python - <<'PY'
+          from pathlib import Path
+          import cairosvg
+          from PIL import Image
+          for layout,width,print_width in [('stacked',1236,3708),('horizontal',2158,4316)]:
+              stem=Path('branding')/f'FrostBridge-{layout}'
+              svg=str(stem)+'-traced.svg'
+              for px,suffix in [(width,'.png'),(print_width,'-print-300dpi.png')]:
+                  output=str(stem)+suffix
+                  cairosvg.svg2png(url=svg,write_to=output,output_width=px)
+                  if 'print' in suffix:
+                      im=Image.open(output); im.save(output,dpi=(300,300))
+              im=Image.open(str(stem)+'.png').convert('RGBA')
+              im.save(str(stem)+'.webp',format='WEBP',lossless=True)
+          PY
+      - name: Commit design assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add branding
+          if ! git diff --cached --quiet; then
+            git commit -m "Add stacked and horizontal FrostBridge vector and web assets"
+            git push
+          fi
